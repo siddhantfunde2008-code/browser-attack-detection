@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Attack Detection Dashboard</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            color: white;
+        }
+
+        header {
+            text-align: center;
+            padding: 20px;
+            background: rgba(0,0,0,0.4);
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .container {
+            padding: 30px;
+        }
+
+        .login-box {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        input {
+            padding: 10px;
+            margin: 5px;
+            border-radius: 5px;
+            border: none;
+            width: 200px;
+        }
+
+        button {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            background: #00c6ff;
+            color: black;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #00a2d4;
+        }
+
+        .card {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            text-align: center;
+        }
+
+        th {
+            background: rgba(0,0,0,0.5);
+        }
+
+        canvas {
+            background: white;
+            border-radius: 10px;
+            padding: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+<header>🛡 Cyber Security Attack Monitoring Dashboard</header>
+
+<div class="container">
+
+    <div class="login-box">
+        <input type="text" id="email" placeholder="Email">
+        <input type="password" id="password" placeholder="Password">
+        <button onclick="login()">Login</button>
+    </div>
+
+    <div class="card">
+        <h3>Total Attacks: <span id="count">0</span></h3>
+
+        <button onclick="filterLogs('ALL')">All</button>
+        <button onclick="filterLogs('XSS')">XSS</button>
+        <button onclick="filterLogs('SQL Injection')">SQL Injection</button>
+
+        <canvas id="attackChart" height="100"></canvas>
+    </div>
+
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Payload</th>
+                    <th>IP</th>
+                    <th>Date</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="logsTable"></tbody>
+        </table>
+    </div>
+
+</div>
+
+<script>
+let token = ""
+let allLogs = []
+let chartInstance = null
+let refreshInterval = null
+
+async function login() {
+
+    const email = document.getElementById("email").value
+    const password = document.getElementById("password").value
+
+    const response = await fetch("http://localhost:5000/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+    })
+
+    const data = await response.json()
+    token = data.token
+
+    if (!token) {
+        alert("Login Failed")
+        return
+    }
+
+    alert("Login Successful")
+    fetchLogs()
+
+    if (refreshInterval) clearInterval(refreshInterval)
+    refreshInterval = setInterval(fetchLogs, 5000)
+}
+
+async function fetchLogs() {
+
+    const response = await fetch("http://localhost:5000/api/admin/logs", {
+        method: "GET",
+        headers: { "Authorization": token }
+    })
+
+    const logs = await response.json()
+    allLogs = logs
+    displayLogs(allLogs)
+}
+
+function displayLogs(logs) {
+
+    const table = document.getElementById("logsTable")
+    table.innerHTML = ""
+
+    let xssCount = 0
+    let sqlCount = 0
+
+    logs.forEach(log => {
+
+        if (log.type === "XSS") xssCount++
+        if (log.type === "SQL Injection") sqlCount++
+
+        table.innerHTML += `
+            <tr>
+                <td>${log.type}</td>
+                <td>${log.payload}</td>
+                <td>${log.ip}</td>
+                <td>${new Date(log.createdAt).toLocaleString()}</td>
+                <td><button onclick="deleteLog('${log._id}')">Delete</button></td>
+            </tr>
+        `
+    })
+
+    document.getElementById("count").innerText = logs.length
+    drawChart(xssCount, sqlCount)
+}
+
+function filterLogs(type) {
+    if (type === 'ALL') {
+        displayLogs(allLogs)
+        return
+    }
+    const filtered = allLogs.filter(log => log.type === type)
+    displayLogs(filtered)
+}
+
+async function deleteLog(id) {
+    const confirmDelete = confirm("Delete this log?")
+    if (!confirmDelete) return
+
+    await fetch(`http://localhost:5000/api/admin/logs/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": token }
+    })
+
+    fetchLogs()
+}
+
+function drawChart(xssCount, sqlCount) {
+
+    const ctx = document.getElementById('attackChart').getContext('2d')
+
+    if (chartInstance) chartInstance.destroy()
+
+    chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['XSS', 'SQL Injection'],
+            datasets: [{
+                label: 'Attack Count',
+                data: [xssCount, sqlCount],
+                backgroundColor: ['#ff4b5c', '#ffa600']
+            }]
+        },
+        options: {
+            responsive: true
+        }
+    })
+}
+</script>
+
+</body>
+</html>
